@@ -1,0 +1,68 @@
+{
+  "source_file": "Relatorio_Recebiveis_Exemplo.pdf",
+  "page_count": 1,
+  "warnings": [],
+  "tables": [
+    {
+      "table_id": "resumo_processos",
+      "sheet_name": "Resumo Processos",
+      "title": "Resumo de Processos",
+      "source_pages": [1],
+      "source_note": "Indicadores consolidados.",
+      "limitations": [],
+      "columns": [
+        {"name": "Indicador", "data_type": "text", "number_format": ""},
+        {"name": "Valor", "data_type": "integer", "number_format": ""}
+      ],
+      "rows": [
+        {"row_kind": "data", "values": ["Total Processos Ativos", "627"]},
+        {"row_kind": "data", "values": ["Prorrogados", "0"]},
+        {"row_kind": "total", "values": ["Total", "627"]}
+      ]
+    },
+    {
+      "table_id": "inadimplencia",
+      "sheet_name": "Inadimplencia",
+      "title": "Inadimplencia",
+      "source_pages": [1],
+      "source_note": "Indicadores por janela de vencimento.",
+      "limitations": [],
+      "columns": [
+        {"name": "Inadimplencia", "data_type": "text", "number_format": ""},
+        {"name": "Valor", "data_type": "percentage", "number_format": ""},
+        {"name": "Qtd", "data_type": "percentage", "number_format": ""},
+        {"name": "Observacao", "data_type": "text", "number_format": ""}
+      ],
+      "rows": [
+        {
+          "row_kind": "data",
+          "values": ["Inadimplencia Total", "20,48%", "33,40%", "Considerando todas as parcelas"]
+        },
+        {
+          "row_kind": "data",
+          "values": ["Inadimplencia Ultimos 3 Meses", "36,07%", "49,74%", "Considerando parcelas com vencimento nos ultimos 3 meses"]
+        }
+      ]
+    },
+    {
+      "table_id": "recebiveis",
+      "sheet_name": "Recebiveis",
+      "title": "Recebiveis",
+      "source_pages": [1],
+      "source_note": "Projecao de recebiveis.",
+      "limitations": [],
+      "columns": [
+        {"name": "Descricao", "data_type": "text", "number_format": ""},
+        {"name": "Recebiveis", "data_type": "currency", "number_format": ""},
+        {"name": "Media", "data_type": "currency", "number_format": ""},
+        {"name": "Minimo", "data_type": "currency", "number_format": ""}
+      ],
+      "rows": [
+        {
+          "row_kind": "data",
+          "values": ["De 31/08/2026 ate 31/07/2027", "R$ 9.051.644,35", "R$ 754.303,70", "R$ 323.474,25"]
+        }
+      ]
+    }
+  ]
+}

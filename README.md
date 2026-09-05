@@ -140,4 +140,3 @@ python extrair_recebiveis_gemini.py "Relatorio Recebiveis.pdf" \
   --output "Relatorio Recebiveis_tabelas.xlsx" \
   --save-json "Relatorio Recebiveis_auditoria.json"
 ```
-

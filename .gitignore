@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.streamlit/secrets.toml
+*.log
+qa_render/
+saida/
+*.pdf
+*.PDF
+.env
+.env.*
+validacao_saida.xlsx
+work/
