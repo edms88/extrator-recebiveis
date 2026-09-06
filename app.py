@@ -13,13 +13,13 @@ from pathlib import Path
 import streamlit as st
 
 from extrair_recebiveis_gemini import (
-    DEFAULT_MODEL,
     UserFacingError,
     build_workbook,
-    extract_with_gemini,
     validate_pdf,
     verify_workbook,
 )
+from extracao_local import extract_local
+from extracao_openai import extract_openai
 
 
 APP_TITLE = "Extrator de Recebíveis"
@@ -82,25 +82,25 @@ def configure_page() -> None:
 
 def configure_api_key() -> str:
     """Lê a credencial sem copiá-la para o ambiente global."""
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         try:
-            api_key = str(st.secrets["GEMINI_API_KEY"]).strip()
+            api_key = str(st.secrets["OPENAI_API_KEY"]).strip()
         except Exception:
             # Streamlit usa uma excecao propria quando ainda nao existe secrets.toml.
             api_key = ""
     if not api_key:
         raise UserFacingError(
-            "A chave GEMINI_API_KEY não foi configurada nos Secrets do aplicativo."
+            "Cadastre OPENAI_API_KEY nos Secrets para usar GPT. Uma chave OpenAI em GEMINI_API_KEY não é utilizada. O modo sem IA não precisa de chave."
         )
     return api_key
 
 
 def configured_model() -> str:
     try:
-        return str(st.secrets.get("GEMINI_MODEL", os.getenv("GEMINI_MODEL", DEFAULT_MODEL))).strip() or DEFAULT_MODEL
+        return str(st.secrets.get("OPENAI_MODEL", os.getenv("OPENAI_MODEL", ""))).strip()
     except Exception:
-        return os.getenv("GEMINI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+        return os.getenv("OPENAI_MODEL", "").strip()
 
 
 def validate_upload(file_name: str, content: bytes) -> None:
@@ -122,8 +122,7 @@ def clear_previous_result(file_digest: str) -> None:
         st.session_state["file_digest"] = file_digest
 
 
-def process_pdf(file_name: str, content: bytes) -> None:
-    api_key = configure_api_key()
+def process_pdf(file_name: str, content: bytes, mode: str = "local") -> None:
     raw_stem = Path(file_name).stem.strip() or "relatorio_recebiveis"
     safe_stem = re.sub(r"[^\w .-]", "_", raw_stem, flags=re.UNICODE).strip(" .")
     safe_stem = (safe_stem or "relatorio_recebiveis")[:100]
@@ -138,15 +137,15 @@ def process_pdf(file_name: str, content: bytes) -> None:
             page_count = validate_pdf(pdf_path, max_pages=MAX_PAGES, max_mb=MAX_MB)
         except ValueError as exc:
             raise UserFacingError(str(exc)) from None
-        extraction = extract_with_gemini(
-            pdf_path=pdf_path,
-            model=configured_model(),
-            expected_pages=page_count,
-            attempts=2,
-            api_key=api_key,
-        )
+        if mode == "local":
+            extraction = extract_local(pdf_path, page_count)
+        elif mode == "gpt":
+            extraction = extract_openai(pdf_path, configured_model(), page_count, configure_api_key())
+        else:
+            raise UserFacingError("Modo de extração inválido.")
         # O nome temporario nao deve aparecer como fonte no Excel.
         extraction.source_file = file_name
+        extraction.extraction_method = "local_powerbi_v1" if mode == "local" else "openai_responses"
 
         build_workbook(extraction, output_path, freeze=True)
         verify_workbook(output_path, len(extraction.tables))
@@ -223,12 +222,19 @@ def main() -> None:
           <p>Transforme as tabelas visíveis do relatório PDF em um Excel organizado.</p>
         </section>
         <div class="privacy-note">
-          O PDF não é gravado permanentemente pela aplicação. Ele é enviado à
-          Gemini API durante a extração e o arquivo temporário local é apagado ao final.
+          No modo sem IA, o PDF é processado no servidor Streamlit sem envio a uma API de IA.
+          No modo GPT, o PDF é enviado à OpenAI. Os arquivos temporários da aplicação são apagados ao final.
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    mode_label = st.radio("Como extrair", ["Sem IA — modelo Recebíveis", "GPT — OpenAI"], key="extraction_mode")
+    mode = "local" if mode_label.startswith("Sem IA") else "gpt"
+    if mode == "local":
+        st.caption("Perfil específico do relatório detalhado Power BI. Não requer chave. PDFs digitalizados ou outros layouts não são suportados neste modo.")
+    else:
+        st.caption("Requer OPENAI_API_KEY e OPENAI_MODEL nos Secrets. O PDF será enviado à OpenAI; use apenas dados autorizados.")
 
     uploaded_file = st.file_uploader(
         "Relatório de recebíveis",
@@ -243,7 +249,7 @@ def main() -> None:
         return
 
     content = uploaded_file.getvalue()
-    digest = hashlib.sha256(uploaded_file.name.encode() + content).hexdigest()
+    digest = hashlib.sha256(mode.encode() + uploaded_file.name.encode() + content).hexdigest()
     clear_previous_result(digest)
 
     if st.button("Extrair tabelas", type="primary", use_container_width=True):
@@ -255,7 +261,7 @@ def main() -> None:
             except ValueError as exc:
                 raise UserFacingError(str(exc)) from None
             with st.spinner("Analisando o PDF e construindo o Excel..."):
-                process_pdf(uploaded_file.name, content)
+                process_pdf(uploaded_file.name, content, mode)
         except UserFacingError as exc:
             st.error(f"Não foi possível processar o relatório: {exc}")
         except Exception:

@@ -1,142 +1,90 @@
-# Extrator de Recebíveis — Streamlit + Gemini
+# Extrator de Recebíveis — sem IA ou com GPT
 
-Aplicação web em Python para transformar as tabelas visíveis de relatórios de
-recebíveis em um arquivo Excel organizado, com uma aba para cada tabela.
+Aplicação Streamlit privada, com uma aba Excel por tabela, valores tipados,
+filtros, congelamento de cabeçalho e proteção contra fórmulas em textos.
 
-O Excel mantém o padrão das entregas anteriores:
+## Modo padrão: sem IA
 
-- título azul Fundacred `#00308F`;
-- fonte e páginas de origem;
-- cabeçalho cinza e linhas alternadas;
-- filtros e cabeçalho congelado;
-- moedas, percentuais, números e datas como valores tipados;
-- subtotais e totais destacados;
-- limitações visuais registradas na própria aba.
+Selecione **Sem IA — modelo Recebíveis**. Não requer chave e não chama nenhuma API.
+O PDF é enviado ao servidor Streamlit e processado por pdfplumber. Os arquivos
+temporários são apagados ao final; Excel e JSON ficam na sessão para download.
 
-## Arquivos principais
+O perfil é específico do relatório detalhado Power BI fornecido. Requer texto
+selecionável, marcadores reconhecíveis e a seção detalhada Agregado Mensal.
+No modelo fictício de cinco páginas, produz 13 abas. A página de resumo não é
+extraída pelo perfil; o aviso solicita sua revisão. Contratos e Parcelas possuem
+colunas cortadas no PDF: somente as colunas completas são extraídas. Linhas fora
+da rolagem não são recuperadas e totais oficiais não são recalculados.
 
-| Arquivo | Finalidade |
-|---|---|
-| `app.py` | Interface web executada pelo Streamlit |
-| `extrair_recebiveis_gemini.py` | Extração, validação e geração do Excel |
-| `requirements.txt` | Dependências do projeto |
-| `.streamlit/config.toml` | Tema visual e limite de upload |
-| `exemplo_extracao.json` | Dados de exemplo para teste sem API |
-| `tests/test_core.py` | Testes de conversão e geração do workbook |
+Não é um extrator universal: outros layouts, PDFs escaneados ou alterações nos
+cabeçalhos podem exigir ajuste das regras ou uso explícito do modo GPT. O modo
+local nunca faz fallback automático para IA. Valide amostras antes de uso operacional.
 
-## Executar localmente
+## Modo opcional: GPT — OpenAI
 
-Use Python 3.12 (versão usada na validação).
+A antiga chamada Gemini foi removida. Usa o SDK oficial OpenAI, Responses API,
+PDF inline, JSON estruturado validado por Pydantic e store=False. Não utiliza
+esta conversa do ChatGPT. Nenhuma assinatura ou billing é ativado pela aplicação.
 
-### Windows PowerShell
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-$env:GEMINI_API_KEY="COLE_A_CHAVE_APENAS_NESTA_SESSAO"
-streamlit run app.py
-```
-
-### Linux ou macOS
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-export GEMINI_API_KEY="COLE_A_CHAVE_APENAS_NESTA_SESSAO"
-streamlit run app.py
-```
-
-Não grave a chave no código, no GitHub, no AppSheet ou no Google Sheets.
-
-## Publicar no Streamlit Community Cloud
-
-1. Crie um repositório privado no GitHub.
-2. Envie o conteúdo desta pasta para a raiz do repositório.
-3. Acesse `https://share.streamlit.io/` e clique em **Create app**.
-4. Selecione o repositório, a branch e o arquivo principal `app.py`.
-5. Em **Advanced settings > Secrets**, cadastre:
+Cadastre pessoalmente em App settings → Secrets:
 
 ```toml
-GEMINI_API_KEY = "SUA_CHAVE_DO_GEMINI"
+OPENAI_API_KEY = "CHAVE_INSERIDA_DIRETAMENTE_PELO_USUARIO"
+OPENAI_MODEL = "MODELO_GPT_HABILITADO_NA_SUA_CONTA"
 ```
 
-6. Publique o aplicativo.
-7. Nas configurações de compartilhamento, mantenha o aplicativo privado e convide
-   somente os e-mails autorizados.
+Escolha um modelo com suporte a PDF e structured outputs. O nome é configurável;
+não há modelo imposto para evitar alterar a escolha de qualidade/custo da conta.
+Uma chave colocada em GEMINI_API_KEY não é reaproveitada. Não envie chaves na conversa.
+Não é necessário cadastrar Secrets para o modo sem IA.
 
-O arquivo `.streamlit/secrets.toml` está bloqueado pelo `.gitignore`. Não remova
-essa proteção e não coloque a chave diretamente no repositório.
+O PDF no modo GPT é enviado à OpenAI. Antes de usar dados reais, confirme a aprovação
+corporativa do provedor e do tratamento de dados. store=False não substitui governança.
 
-## Colocar no Google Sites
+## Executar
 
-Para aplicativo privado, prefira um botão no Google Sites que abra o endereço
-`https://seu-app.streamlit.app` em uma nova aba. Incorporar o aplicativo em um
-iframe pode causar falhas no login por bloqueio de cookies de terceiros.
+Python 3.12:
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
 
-O Google Sites deve ser restrito aos mesmos usuários autorizados no Streamlit.
-Restringir somente o Site não protege a URL direta da aplicação.
+CLI sem IA:
+```powershell
+python extrair_recebiveis_gemini.py relatorio.pdf --engine local -o saida.xlsx --save-json auditoria.json
+```
+O nome histórico do módulo foi mantido para compatibilidade com imports e comandos.
+Ele contém validações e formatação do Excel; não contém mais chamadas Gemini.
+Para GPT use --engine gpt e defina OPENAI_API_KEY e OPENAI_MODEL no ambiente.
 
-## Testes
+## Verificações
 
-Os testes não chamam a Gemini API:
-
-```bash
+```powershell
+python -m py_compile app.py extrair_recebiveis_gemini.py extracao_local.py extracao_openai.py
 python -m unittest discover -s tests -v
+python extrair_recebiveis_gemini.py --json exemplo_extracao.json -o validacao_saida.xlsx
 ```
 
-Também é possível gerar um Excel sem consumir a API:
+14 testes automatizados, incluindo SDK OpenAI real com transporte HTTP simulado,
+erros sanitizados, ausência de fallback para chave Gemini, rejeição de layout
+desconhecido e conversões do Excel. O PDF fictício foi validado separadamente sem
+rede: 13 abas, totais, datas, identificadores e posições de percentuais vazios.
+Integração real GPT permanece pendente dos Secrets corretos e teste na conta.
 
-```bash
-python extrair_recebiveis_gemini.py \
-  --json exemplo_extracao.json \
-  --output exemplo_saida.xlsx
-```
+## Publicação e segurança
 
-## Limites e governança
+Repositório privado: https://github.com/edms88/extrator-recebiveis
+Aplicação privada: https://extrator-recebiveis-bvyduh7minrzyzwtrgu9eo.streamlit.app/
+Branch main, arquivo app.py, Python 3.12. Preservar ambos privados.
+Não convidar colaboradores sem lista autorizada. Google Sites somente como portal,
+após indicação explícita do site: botão “Extrair relatório de recebíveis” em nova aba.
 
-**Status desta entrega: aprovado para teste anonimizado; uso de dados reais
-bloqueado por governança até confirmação da modalidade e aprovação corporativa.**
-Não ative billing ou assinatura para remover esse bloqueio sem autorização expressa.
+Limites: 10 MB e 10 páginas. PDF deve ter assinatura %PDF-. Sem cache compartilhado
+de documentos. .streamlit/secrets.toml, PDFs e arquivos temporários excluídos do Git.
 
-O modelo é configurável por `GEMINI_MODEL` nos Secrets do Streamlit ou no ambiente.
-O padrão é `gemini-3.8-flash`, documentado atualmente para PDF e JSON estruturado.
-Se a conta não tiver acesso, o administrador pode trocar essa configuração sem
-editar o código. A disponibilidade na conta ainda precisa de teste real.
-As chamadas usam `store=False`, sem histórico de interações; isso não substitui
-a aprovação dos termos de tratamento de dados da Gemini API.
+## Referências oficiais
 
-Referências oficiais consultadas em 05/09/2026:
-- https://ai.google.dev/gemini-api/docs/document-processing
-- https://ai.google.dev/gemini-api/docs/structured-output
-- https://ai.google.dev/gemini-api/docs/interactions-overview
-- https://ai.google.dev/gemini-api/terms
-
-Cadastre a chave pessoalmente no ambiente seguro; nunca a envie na conversa.
-Na publicação, configure Secrets antes de concluir o deploy. Confirme o repositório
-e o aplicativo como privados e não convide pessoas sem a lista autorizada.
-O portal Google Sites permanece pendente da URL publicada e da indicação explícita
-do site que poderá ser alterado. O botão deve se chamar “Extrair relatório de recebíveis”.
-
-O piloto limita cada PDF a 10 páginas e 10 MB. Arquivos temporários são apagados
-ao final de cada processamento e não há cache compartilhado dos documentos.
-
-O schema valida a estrutura do resultado, mas não garante que todos os valores
-extraídos estejam semanticamente corretos. Compare amostras do Excel com o PDF
-antes de usar o resultado como dado oficial.
-
-Antes de processar relatórios reais, confirme se o projeto associado à chave está
-no nível pago/corporativo e se o tratamento foi aprovado pela Fundacred. A licença
-corporativa do chat Gemini não garante, por si só, que a Gemini API esteja em
-modalidade paga.
-
-## Execução por linha de comando
-
-A interface web é opcional. O backend continua aceitando execução direta:
-
-```bash
-python extrair_recebiveis_gemini.py "Relatorio Recebiveis.pdf" \
-  --output "Relatorio Recebiveis_tabelas.xlsx" \
-  --save-json "Relatorio Recebiveis_auditoria.json"
-```
+- https://developers.openai.com/api/docs/guides/file-inputs
+- https://developers.openai.com/api/docs/guides/structured-outputs

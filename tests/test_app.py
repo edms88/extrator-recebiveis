@@ -26,7 +26,7 @@ class AppTests(unittest.TestCase):
         extraction = load_extraction_json(ROOT / 'exemplo_extracao.json')
         state = {}
         with tempfile.TemporaryDirectory() as temp_root:
-            with patch.object(app, 'configure_api_key', return_value='synthetic-test-only'), patch.object(app, 'configured_model', return_value='test-model'), patch.object(app, 'extract_with_gemini', return_value=extraction), patch.object(app.st, 'session_state', state), patch.object(tempfile, 'tempdir', temp_root):
+            with patch.object(app, 'configure_api_key', return_value='synthetic-test-only'), patch.object(app, 'configured_model', return_value='test-model'), patch.object(app, 'extract_local', return_value=extraction), patch.object(app.st, 'session_state', state), patch.object(tempfile, 'tempdir', temp_root):
                 app.process_pdf('anonimizado.pdf', buffer.getvalue())
                 self.assertEqual(state['summary']['tables'], 3)
                 self.assertTrue(state['xlsx_bytes'].startswith(b'PK'))

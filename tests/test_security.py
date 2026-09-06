@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 from pypdf import PdfWriter
 from extrair_recebiveis_gemini import (
     coerce_value, load_extraction_json, build_workbook, validate_pdf,
-    extract_with_gemini, UserFacingError,
+    UserFacingError,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,34 +55,6 @@ class SecurityTests(unittest.TestCase):
                 validate_pdf(path, 10, 10)
             self.assertEqual(validate_pdf(path, 11, 10), 11)
 
-    def test_sdk_contract_offline(self):
-        from google import genai
-        client = MagicMock()
-        client.interactions.create.return_value.output_text = (ROOT / 'exemplo_extracao.json').read_text(encoding='utf-8')
-        with tempfile.TemporaryDirectory() as directory, patch.object(genai, 'Client', return_value=client):
-            path = Path(directory) / 'test.pdf'
-            path.write_bytes(b'%PDF-synthetic')
-            result = extract_with_gemini(path, 'test-model', 3, 1, api_key='synthetic-test-only')
-            self.assertEqual(len(result.tables), 3)
-            args = client.interactions.create.call_args.kwargs
-            self.assertFalse(args['store'])
-            self.assertEqual(args['response_format']['mime_type'], 'application/json')
-            client.close.assert_called_once()
-
-    def test_sdk_error_is_sanitized(self):
-        from google import genai
-        client = MagicMock()
-        error = RuntimeError('SENSITIVE_MARKER')
-        error.status_code = 404
-        client.interactions.create.side_effect = error
-        with tempfile.TemporaryDirectory() as directory, patch.object(genai, 'Client', return_value=client):
-            path = Path(directory) / 'test.pdf'
-            path.write_bytes(b'%PDF-synthetic')
-            with self.assertRaises(UserFacingError) as caught:
-                extract_with_gemini(path, 'missing', 1, 2, api_key='synthetic-test-only')
-            self.assertNotIn('SENSITIVE_MARKER', str(caught.exception))
-            self.assertIn('GEMINI_MODEL', str(caught.exception))
-            self.assertEqual(client.interactions.create.call_count, 1)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extrai tabelas visiveis de um PDF de recebiveis com Gemini e gera XLSX.
+"""Extrai tabelas visiveis de um PDF de recebiveis sem IA ou com GPT e gera XLSX.
 
 Uso normal:
     python extrair_recebiveis_gemini.py relatorio.pdf -o relatorio_tabelas.xlsx
@@ -7,7 +7,7 @@ Uso normal:
 Uso offline, a partir de um JSON previamente extraido:
     python extrair_recebiveis_gemini.py --json extracao.json -o relatorio_tabelas.xlsx
 
-A chave deve existir somente na variavel de ambiente GEMINI_API_KEY.
+A chave deve existir somente na variavel de ambiente OPENAI_API_KEY.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from pypdf import PdfReader
 
 
 APP_VERSION = "1.0.0"
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "")
 
 
 class UserFacingError(RuntimeError):
@@ -123,6 +123,7 @@ class DocumentExtraction(BaseModel):
     page_count: int
     warnings: list[str]
     tables: list[ExtractedTable]
+    extraction_method: str = ""
 
 
 EXTRACTION_PROMPT = """
@@ -200,13 +201,13 @@ def parse_args() -> argparse.Namespace:
         "--json",
         dest="json_input",
         type=Path,
-        help="JSON estruturado para gerar o Excel sem chamar o Gemini.",
+        help="JSON estruturado para gerar o Excel sem chamar uma API.",
     )
     parser.add_argument("-o", "--output", type=Path, help="Arquivo XLSX de saida.")
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        help=f"Modelo Gemini. Padrao: {DEFAULT_MODEL}",
+        help=f"Modelo OpenAI. Padrao: {DEFAULT_MODEL}",
     )
     parser.add_argument(
         "--save-json",
@@ -215,7 +216,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-pages", type=int, default=10)
     parser.add_argument("--max-mb", type=float, default=10.0)
-    parser.add_argument("--attempts", type=int, default=2)
+    parser.add_argument("--engine", choices=["local", "gpt"], default="local")
     parser.add_argument(
         "--no-freeze",
         action="store_true",
@@ -260,88 +261,6 @@ def validate_pdf(pdf_path: Path, max_pages: int, max_mb: float) -> int:
             f"PDF possui {page_count} paginas; o limite configurado e {max_pages}."
         )
     return page_count
-
-
-def extract_with_gemini(
-    pdf_path: Path,
-    model: str,
-    expected_pages: int,
-    attempts: int,
-    api_key: str | None = None,
-) -> DocumentExtraction:
-    api_key = api_key or os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Defina GEMINI_API_KEY no ambiente. Nao coloque a chave no codigo."
-        )
-
-    try:
-        from google import genai
-    except ImportError as exc:
-        raise RuntimeError(
-            "Pacote google-genai ausente. Execute: pip install -r requirements.txt"
-        ) from exc
-
-    client = genai.Client(api_key=api_key)
-    pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
-    prompt = (
-        f"Arquivo: {pdf_path.name}\n"
-        f"Quantidade de paginas validada pelo backend: {expected_pages}\n\n"
-        f"{EXTRACTION_PROMPT}"
-    )
-
-    last_error: Exception | None = None
-    for attempt in range(1, max(1, attempts) + 1):
-        try:
-            interaction = client.interactions.create(
-                model=model,
-                store=False,
-                input=[
-                    {
-                        "type": "document",
-                        "data": pdf_b64,
-                        "mime_type": "application/pdf",
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-                response_format={
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema": DocumentExtraction.model_json_schema(),
-                },
-            )
-            output_text = getattr(interaction, "output_text", None)
-            if not output_text:
-                raise RuntimeError("O Gemini nao retornou JSON na resposta.")
-
-            extraction = DocumentExtraction.model_validate_json(output_text)
-            if extraction.page_count != expected_pages:
-                extraction.warnings.append(
-                    "O Gemini informou quantidade de paginas diferente do PDF; "
-                    "foi mantida a contagem validada pelo backend."
-                )
-                extraction.page_count = expected_pages
-            extraction.source_file = pdf_path.name
-            client.close()
-            return extraction
-        except Exception as exc:  # Erros HTTP/SDK variam entre versoes.
-            last_error = exc
-            status = getattr(exc, "status_code", getattr(exc, "code", None))
-            if status in (400, 401, 403, 404):
-                break
-            if attempt < attempts:
-                time.sleep(min(2**attempt, 8))
-
-    client.close()
-    assert last_error is not None
-    messages = {
-        400: "A API rejeitou a solicitação. Verifique GEMINI_MODEL e a compatibilidade com PDF e JSON.",
-        401: "Credencial Gemini inválida. Solicite ao administrador a revisão dos Secrets.",
-        403: "Acesso à Gemini negado. Solicite ao administrador a revisão das permissões.",
-        404: "Modelo indisponível nesta conta. Configure GEMINI_MODEL nos Secrets ou no ambiente, sem editar o código.",
-        429: "Limite da Gemini atingido. Aguarde e tente novamente; o administrador deve verificar a cota.",
-    }
-    raise UserFacingError(messages.get(status, "Não foi possível obter uma extração válida da Gemini. Tente novamente.")) from None
 
 
 def load_extraction_json(json_path: Path) -> DocumentExtraction:
@@ -747,12 +666,12 @@ def main() -> int:
 
     if args.pdf:
         page_count = validate_pdf(args.pdf, args.max_pages, args.max_mb)
-        extraction = extract_with_gemini(
-            pdf_path=args.pdf,
-            model=args.model,
-            expected_pages=page_count,
-            attempts=args.attempts,
-        )
+        if args.engine == "local":
+            from extracao_local import extract_local
+            extraction = extract_local(args.pdf, page_count)
+        else:
+            from extracao_openai import extract_openai
+            extraction = extract_openai(args.pdf, args.model, page_count, os.getenv("OPENAI_API_KEY", ""))
     else:
         extraction = load_extraction_json(args.json_input)
 
